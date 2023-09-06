@@ -170,8 +170,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default="stabilityai/stable-diffusion-2-1-base",
-        required=True,
+        default="stable-diffusion/stable-diffusion-2-1-base",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -184,7 +183,6 @@ def parse_args(input_args=None):
         "--revision",
         type=str,
         default=None,
-        required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -196,34 +194,31 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--instance_data_dir",
         type=str,
-        default=None,
-        required=True,
+        default="lora_repo/data/training",
         help="A folder containing the training data of instance images.",
     )
     parser.add_argument(
         "--class_data_dir",
         type=str,
-        default=None,
+        default="data/class-person",
         required=False,
         help="A folder containing the training data of class images.",
     )
     parser.add_argument(
         "--instance_prompt",
         type=str,
-        default=None,
-        required=True,
+        default="a photo of sks person",
         help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
         "--class_prompt",
         type=str,
-        default=None,
+        default="a photo of person",
         help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
         "--with_prior_preservation",
-        default=False,
-        action="store_true",
+        default=True,
         help="Flag to add prior preservation loss.",
     )
     parser.add_argument(
@@ -244,7 +239,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="./lora_model",
+        default="lora_repo/model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -268,7 +263,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--center_crop",
-        action="store_true",
+        default=True,
         help="Whether to center crop images before resizing to resolution",
     )
     parser.add_argument(
@@ -278,13 +273,13 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--train_text_encoder",
-        action="store_true",
+        default=True,
         help="Whether to train the text encoder",
     )
     parser.add_argument(
         "--train_batch_size",
         type=int,
-        default=4,
+        default=1,
         help="Batch size (per device) for the training dataloader.",
     )
     parser.add_argument(
@@ -297,7 +292,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--max_train_steps",
         type=int,
-        default=None,
+        default=1000,
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
@@ -326,13 +321,13 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=None,
+        default=1e-4,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
         "--learning_rate_text",
         type=float,
-        default=5e-6,
+        default=5e-5,
         help="Initial learning rate for text encoder (after the potential warmup period) to use.",
     )
     parser.add_argument(
@@ -490,7 +485,7 @@ def main(args):
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
-        logging_dir=logging_dir,
+        project_dir=logging_dir,
     )
 
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
@@ -722,7 +717,7 @@ def main(args):
         batch_size=args.train_batch_size,
         shuffle=True,
         collate_fn=collate_fn,
-        num_workers=1,
+        num_workers=0,
     )
 
     # Scheduler and math around the number of training steps.

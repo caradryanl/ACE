@@ -269,7 +269,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--max_adv_train_steps",
         type=int,
-        default=6,
+        default=10,
         help="Total number of sub-steps to train adversarial noise.",
     )
     parser.add_argument(
@@ -324,7 +324,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pgd_alpha",
         type=float,
-        default=5e-3,
+        default=1e-3,
         help="The step size for pgd.",
     )
     parser.add_argument(
@@ -366,13 +366,13 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=1e-4,
+        default=5e-7,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
         "--learning_rate_text",
         type=float,
-        default=5e-6,
+        default=5e-7,
         help="Initial learning rate for text encoder (after the potential warmup period) to use.",
     )
     parser.add_argument(
