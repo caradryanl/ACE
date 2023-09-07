@@ -139,7 +139,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default="./stable-diffusion/stable-diffusion-2-1-base",
+        default="./stable-diffusion/stable-diffusion-1-5",
         required=False,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
@@ -169,28 +169,28 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--instance_data_dir_for_adversarial",
         type=str,
-        default="data/n000050/set_B",
+        default="data/artwork-test",
         required=False,
         help="A folder containing the images to add adversarial noise",
     )
     parser.add_argument(
         "--class_data_dir",
         type=str,
-        default="data/class-person",
+        default="data/artwork-class",
         required=False,
         help="A folder containing the training data of class images.",
     )
     parser.add_argument(
         "--instance_prompt",
         type=str,
-        default="a photo of sks person",
+        default="a sks animation girl, masterpiece, high-quality",
         required=False,
         help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
         "--class_prompt",
         type=str,
-        default="a photo of person",
+        default="an animation girl, masterpiece, high-quality",
         help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
@@ -216,7 +216,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="outputs/ASPL_M/n000050_ADVERSARIAL",
+        default="outputs/ASPL_M/artwork-test",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
@@ -251,7 +251,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--sample_batch_size",
         type=int,
-        default=8,
+        default=4,
         help="Batch size (per device) for sampling images.",
     )
     parser.add_argument(
@@ -354,7 +354,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--gradient_checkpointing",
-        action="store_true",
+        default=False,
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
@@ -949,6 +949,8 @@ def main(args):
         unet.enable_gradient_checkpointing()
         if args.train_text_encoder:
             text_encoder.gradient_checkpointing_enable()
+        vae._set_gradient_checkpointing(module=vae.encoder, value=True)
+        vae._set_gradient_checkpointing(module=vae.decoder, value=True)
 
 
     f = [unet, text_encoder]
