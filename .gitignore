@@ -5,3 +5,5 @@ logs/
 *.safetensors
 *.jpg
 *.png
+*.zip
+*.pyc
