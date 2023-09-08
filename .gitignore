@@ -6,4 +6,4 @@ logs/
 *.jpg
 *.png
 *.zip
-*.pyc
+lora_diffusion/__pycache__/*
