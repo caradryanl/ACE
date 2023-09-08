@@ -666,7 +666,105 @@ def train_one_epoch(
     
     return [unet, text_encoder]
 
-
+class attack_mixin:
+    def __call__(
+        self,
+        latents: torch.Tensor,
+        timesteps: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        unet: torch.nn.Module,
+        target_tensor: torch.Tensor,
+        noise_scheduler
+    ):
+        raise NotImplementedError
+class ClassicAttack(attack_mixin):
+    """
+    This attack aims to maximize the training loss of diffusion model
+    """
+    def __call__(
+        self,
+        latents: torch.Tensor,
+        timesteps: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        unet: torch.nn.Module,
+        target_tensor: torch.Tensor,
+        noise_scheduler
+    ):
+        noise = torch.randn_like(latents)
+        # Add noise to the latents according to the noise magnitude at each timestep
+        # (this is the forward diffusion process)
+        noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+        # Predict the noise residual
+        model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+        # Get the target for loss depending on the prediction type
+        if noise_scheduler.config.prediction_type == "epsilon":
+            target = noise
+        elif noise_scheduler.config.prediction_type == "v_prediction":
+            target = noise_scheduler.get_velocity(latents, noise, timesteps)
+        else:
+            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+        loss = F.mse_loss(model_pred, target)
+        return loss
+class Mode1Attack(attack_mixin):
+    """
+    This attack aims to minimize the l2 distance between latent and target_tensor
+    """
+    def __call__(
+        self,
+        latents: torch.Tensor,
+        timesteps: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        unet: torch.nn.Module,
+        target_tensor: torch.Tensor,
+        noise_scheduler
+    ):
+        loss = F.mse_loss(latents, target_tensor, reduction="mean")
+        return loss
+class T_asplAttack(attack_mixin):
+    """
+    This attack aims to minimize l2(noise,nosie_target)
+    noise: the noise predicted by the unet, given timestep ,text_latent and latent
+    nosie_target: the noise predicted by the unet, given timestep ,text_latent and target_tensor
+    """
+    def __call__(
+        self,
+        latents: torch.Tensor,
+        timesteps: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        unet: torch.nn.Module,
+        target_tensor: torch.Tensor,
+        noise_scheduler
+    ):
+        noise = torch.randn_like(latents)
+        # Add noise to the latents according to the noise magnitude at each timestep
+        # (this is the forward diffusion process)
+        noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+        # Predict the noise residual
+        model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+        # Get the target for loss depending on the prediction type
+        if noise_scheduler.config.prediction_type == "epsilon":
+            target = noise
+        elif noise_scheduler.config.prediction_type == "v_prediction":
+            target = noise_scheduler.get_velocity(latents, noise, timesteps)
+        else:
+            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+        # target-shift loss
+        if target_tensor is not None:
+            xtm1_pred = torch.cat(
+                [
+                    noise_scheduler.step(
+                        model_pred[idx : idx + 1],
+                        timesteps[idx : idx + 1],
+                        noisy_latents[idx : idx + 1],
+                    ).prev_sample
+                    for idx in range(len(model_pred))
+                ]
+            )
+            xtm1_target = noise_scheduler.add_noise(target_tensor, noise, timesteps - 1)
+            loss = - F.mse_loss(xtm1_pred, xtm1_target)
+        else:
+            raise ValueError(f"target_tensor is None")
+        return loss
 def pgd_attack(
     args,
     models,
@@ -677,6 +775,8 @@ def pgd_attack(
     original_images: torch.Tensor,
     target_tensor: torch.Tensor,
     num_steps: int,
+    mode : str = "train",
+    accumulation_steps: int = 1,
 ):
     """Return new perturbed data"""
 
@@ -708,6 +808,7 @@ def pgd_attack(
     image_list = []
     for id in range(num_image):
         perturbed_image = data_tensor[id, :].unsqueeze(0)
+        perturbed_image.requires_grad = True
         original_image = original_images[id, :].unsqueeze(0)
         input_ids = tokenizer(
             args.instance_prompt,
@@ -764,15 +865,15 @@ def pgd_attack(
                 )
                 xtm1_target = noise_scheduler.add_noise(target_tensor, noise, timesteps - 1)
                 loss = loss - F.mse_loss(xtm1_pred, xtm1_target)
-
+            loss = loss / accumulation_steps
             loss.backward()
-
             alpha = args.pgd_alpha
             eps = args.pgd_eps
-
-            adv_images = perturbed_image + alpha * perturbed_image.grad.sign()
-            eta = torch.clamp(adv_images - original_image, min=-eps, max=+eps)
-            perturbed_image = torch.clamp(original_image + eta, min=-1, max=+1).detach_()
+            if step % accumulation_steps == accumulation_steps - 1:
+                adv_images = perturbed_image + alpha * perturbed_image.grad.sign()
+                eta = torch.clamp(adv_images - original_image, min=-eps, max=+eps)
+                perturbed_image = torch.clamp(original_image + eta, min=-1, max=+1).detach_()
+                perturbed_image.requires_grad = True
             print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
 
         image_list.append(perturbed_image.detach().clone().squeeze(0))
