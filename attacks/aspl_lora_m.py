@@ -159,14 +159,14 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--instance_data_dir_for_adversarial",
         type=str,
-        default="data/n000050/set_B",
+        default="data/artwork-test",
         required=False,
         help="A folder containing the images to add adversarial noise",
     )
     parser.add_argument(
         "--class_data_dir",
         type=str,
-        default="data/class-person",
+        default="data/artwork-test",
         required=False,
         help="A folder containing the training data of class images.",
     )
@@ -206,7 +206,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="outputs/ASPL_M/new_version_test",
+        default="outputs/ASPL_M/artwork-test",
         help="The output directory where the perturbed data is stored",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
@@ -1017,15 +1017,15 @@ def main(args):
         vae._set_gradient_checkpointing(module=vae.encoder, value=True)
         vae._set_gradient_checkpointing(module=vae.decoder, value=True)
 
-
-    perturbed_data = pre_attack(
-        args,
-        vae,
-        perturbed_data,
-        original_data,
-        target_latent_tensor,
-        args.pre_attack_steps,
-    )
+    if target_latent_tensor != None:
+        perturbed_data = pre_attack(
+            args,
+            vae,
+            perturbed_data,
+            original_data,
+            target_latent_tensor,
+            args.pre_attack_steps,
+        )
 
     f = [unet, text_encoder]
     for i in range(args.max_train_steps):
