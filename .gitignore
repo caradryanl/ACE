@@ -5,5 +5,6 @@ logs/
 *.safetensors
 *.jpg
 *.png
+!MIST.png
 *.zip
-lora_diffusion/__pycache__/*
+lora_diffusion/__pycache__
