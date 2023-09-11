@@ -34,7 +34,7 @@ from lora_diffusion import (
     inject_trainable_lora,
 )
 from lora_diffusion.xformers_utils import set_use_memory_efficient_attention_xformers
-from attacks.loss import LatentAttack
+from attacks.utils import LatentAttack
 
 logger = get_logger(__name__)
 
