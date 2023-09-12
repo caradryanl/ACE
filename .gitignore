@@ -2,6 +2,10 @@
 *.ckpt
 *.pt
 logs/
+outputs/ASPL_M/
+datasets/
+datasetdict/
 *.safetensors
 *.jpg
 *.png
+*.pyc

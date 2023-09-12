@@ -806,7 +806,10 @@ def pgd_attack(
     '''
     
     image_list = []
+    tbar = tqdm(range(num_image))
+    tbar.set_description("PGD attack")
     for id in range(num_image):
+        tbar.update(1)
         perturbed_image = data_tensor[id, :].unsqueeze(0)
         perturbed_image.requires_grad = True
         original_image = original_images[id, :].unsqueeze(0)
@@ -874,7 +877,7 @@ def pgd_attack(
                 eta = torch.clamp(adv_images - original_image, min=-eps, max=+eps)
                 perturbed_image = torch.clamp(original_image + eta, min=-1, max=+1).detach_()
                 perturbed_image.requires_grad = True
-            print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
+            #print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
 
         image_list.append(perturbed_image.detach().clone().squeeze(0))
     outputs = torch.stack(image_list)

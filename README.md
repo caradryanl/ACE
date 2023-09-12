@@ -1,5 +1,11 @@
 ## Improved Adversarial Attack on Latent Diffusion Models
 
+### Requirements
+
+Requires `python == 3.9 or 3.10` !!
+
+
+
 #### Run AdvDM++ (Anti-LoRA)
 
 
