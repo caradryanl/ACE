@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from torchmetrics.functional.image import structural_similarity_index_measure as SSIM
 
 prompt_dataset = [
     "Portrait of an astronaut in space, detailed starry background, reflective helmet,",
@@ -93,6 +94,22 @@ class AdvDM(attack_mixin):
             loss = loss - F.mse_loss(xtm1_pred, xtm1_target)
 
         return loss
+class SSIMAttack(attack_mixin):
+    """
+    This attack aims to maximize the ssim between generated image and target image
+    """
+    def __call__(
+        self,
+        latents: torch.Tensor,
+        decode,
+        target_tensor: torch.Tensor,
+        noise_scheduler=None
+    ):
+        if target_tensor == None:
+            raise ValueError("Need a target tensor for pre-attack")
+        generated = decode(latents).sample
+        loss = SSIM(generated, target_tensor)
+        return loss
     
 class LatentAttack(attack_mixin):
     """
@@ -109,5 +126,5 @@ class LatentAttack(attack_mixin):
     ):
         if target_tensor == None:
             raise ValueError("Need a target tensor for pre-attack")
-        loss = - F.mse_loss(latents, target_tensor, reduction="mean")
+        loss = F.mse_loss(latents, target_tensor, reduction="mean")
         return loss

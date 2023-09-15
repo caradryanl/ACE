@@ -34,7 +34,7 @@ from lora_diffusion import (
     inject_trainable_lora,
 )
 from lora_diffusion.xformers_utils import set_use_memory_efficient_attention_xformers
-from attacks.utils import LatentAttack
+from attacks.utils import LatentAttack,SSIMAttack
 
 logger = get_logger(__name__)
 
@@ -259,7 +259,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--max_adv_train_steps",
         type=int,
-        default=100,
+        default=50,
         help="Total number of sub-steps to train adversarial noise.",
     )
     parser.add_argument(
@@ -271,7 +271,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
-        default=25,
+        default=5,
         help="Number of updates steps to accumulate before performing a backward/update pass.",
     )
     parser.add_argument(
@@ -352,7 +352,6 @@ def parse_args(input_args=None):
         default="data/MIST.png",
         help="target image for attacking",
     )
-
 
     parser.add_argument(
         "--save_steps",
@@ -612,7 +611,7 @@ def train_one_epoch(
         pixel_values = torch.stack([step_data["instance_images"], step_data["class_images"]]).to(
             device, dtype=weight_dtype
         )
-        print("pixel_values shape: {}".format(pixel_values.shape))
+        #print("pixel_values shape: {}".format(pixel_values.shape))
         input_ids = torch.cat([step_data["instance_prompt_ids"], step_data["class_prompt_ids"]], dim=0).to(device)
 
         latents = vae.encode(pixel_values).latent_dist.sample()
@@ -830,22 +829,24 @@ def pre_attack(
     ).input_ids.repeat(len(data_tensor), 1)
     '''
     
+    if target_tensor is None:
+        raise NotImplementedError("Need a target tensor for pre-attack")
+    target_tensor = vae.decode(target_tensor).sample
     image_list = []
     for id in range(num_image):
         perturbed_image = data_tensor[id, :].unsqueeze(0)
         perturbed_image.requires_grad = True
         original_image = original_images[id, :].unsqueeze(0)
+        target_img = target_tensor[id,:].unsqueeze(0)
         for step in range(num_steps):
             perturbed_image.requires_grad = True
             latents = vae.encode(perturbed_image.to(device, dtype=weight_dtype)).latent_dist.sample()
             latents = latents * vae.config.scaling_factor
-
             # target-shift loss
-            if target_tensor is None:
-                raise NotImplementedError("Need a targete tensor for pre-attack")
-            latent_attack = LatentAttack()
-            loss = latent_attack(latents, target_tensor=target_tensor)
-
+            #latent_attack = LatentAttack()
+            #loss = latent_attack(latents, target_tensor=target_tensor)
+            ssimattack= SSIMAttack()
+            loss = ssimattack(latents, target_tensor=target_img,decode=vae.decode)
             loss.backward()
             alpha = args.pgd_alpha
             eps = args.pgd_eps * args.pre_attack_decay
@@ -853,7 +854,7 @@ def pre_attack(
             eta = torch.clamp(adv_images - original_image, min=-eps, max=+eps)
             perturbed_image = torch.clamp(original_image + eta, min=-1, max=+1).detach_()
             perturbed_image.requires_grad = True
-            print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
+            #print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
 
         image_list.append(perturbed_image.detach().clone().squeeze(0))
     outputs = torch.stack(image_list)

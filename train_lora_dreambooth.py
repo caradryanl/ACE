@@ -170,7 +170,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
-        default="stable-diffusion/stable-diffusion-2-1-base",
+        default="/root/autodl-tmp/ImprovedAdvDM/stable-diffusion/stable-diffusion-1-5",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -194,13 +194,13 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--instance_data_dir",
         type=str,
-        default="lora_repo/data/training",
+        default="outputs/celeba-20-121/noise-ckpt/5",
         help="A folder containing the training data of instance images.",
     )
     parser.add_argument(
         "--class_data_dir",
         type=str,
-        default="data/class-person",
+        default="data/celeba-20-121",
         required=False,
         help="A folder containing the training data of class images.",
     )
@@ -298,7 +298,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--save_steps",
         type=int,
-        default=500,
+        default=1000,
         help="Save checkpoint every X updates steps.",
     )
     parser.add_argument(

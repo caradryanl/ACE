@@ -17,5 +17,7 @@ opencv-python
 mediapipe
 pynvml
 cache
+torchmetrics
+pytorch-ignite
 --extra-index-url https://download.pytorch.org/whl/cu116
 
