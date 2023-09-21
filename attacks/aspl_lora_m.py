@@ -846,7 +846,7 @@ def pre_attack(
             #latent_attack = LatentAttack()
             #loss = latent_attack(latents, target_tensor=target_tensor)
             ssimattack= SSIMAttack()
-            loss = ssimattack(latents, target_tensor=target_img,decode=vae.decode)
+            loss = - ssimattack(latents, target_tensor=target_img,decode=vae.decode)
             loss.backward()
             alpha = args.pgd_alpha
             eps = args.pgd_eps * args.pre_attack_decay

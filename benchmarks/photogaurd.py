@@ -25,7 +25,7 @@ def transform_to_tensor(images:list[Image.Image])->torch.Tensor:
     transform = ToTensor()
     return torch.stack([transform(img).float() for img in images])
 def get_pipe()->StableDiffusionImg2ImgPipeline:
-    model_id_or_path = "runwayml/stable-diffusion-v1-5"
+    model_id_or_path = "stable-diffusion/stable-diffusion-1-5"
     # model_id_or_path = "CompVis/stable-diffusion-v1-4"
     # model_id_or_path = "CompVis/stable-diffusion-v1-3"
     # model_id_or_path = "CompVis/stable-diffusion-v1-2"
@@ -33,26 +33,30 @@ def get_pipe()->StableDiffusionImg2ImgPipeline:
 
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pretrained(
         model_id_or_path,
-        revision="fp16", 
-        torch_dtype=torch.float16,
+        revision="bf16", 
+        torch_dtype=torch.bfloat16,
     )
     pipe_img2img = pipe_img2img.to("cuda")
     return pipe_img2img
 def pgd(X, model, eps=0.1, step_size=0.015, iters=40, clamp_min=0, clamp_max=1, mask=None):
-    X_adv = X.clone().detach() + (torch.rand(*X.shape)*2*eps-eps).cuda()
+    X_adv = X.clone().detach() + (torch.rand(*X.shape)*2*eps-eps).cuda().bfloat16()
+    target_img = Image.open('data/MIST.png').convert('RGB').resize((512,512),Image.BILINEAR)
+    target_tensor = transform_to_tensor([target_img]).cuda().bfloat16() * 2 - 1.
+    target_tensor.requires_grad_(False)
+    target_latent = model(target_tensor).latent_dist.mean.detach()
     pbar = tqdm(range(iters))
     for i in pbar:
         actual_step_size = step_size - (step_size - step_size / 100) / iters * i  
 
         X_adv.requires_grad_(True)
 
-        loss = (model(X_adv).latent_dist.mean).norm()
-
+        #loss = (model(X_adv).latent_dist.mean).norm()
+        loss = torch.square(model(X_adv).latent_dist.mean - target_latent).mean()
         pbar.set_description(f"[Running attack]: Loss {loss.item():.5f} | step size: {actual_step_size:.4}")
 
         grad, = torch.autograd.grad(loss, [X_adv])
-        
-        X_adv = X_adv - grad.detach().sign() * actual_step_size
+        #print(grad)
+        X_adv = (X_adv - grad.detach().sign() * actual_step_size).detach()
         X_adv = torch.minimum(torch.maximum(X_adv, X - eps), X + eps)
         X_adv.data = torch.clamp(X_adv, min=clamp_min, max=clamp_max)
         X_adv.grad = None    
@@ -68,23 +72,22 @@ def perform_pgd(imgs:list[Image.Image],eps:float,iter:int)->list[Image.Image]:
     """
     
     # You may want to play with the parameters of the attack to get stronger attacks, but we found the below params to be decent for our demo
-    
-    with torch.autocast('cuda'):
-        X = transform_to_tensor(imgs).cuda() * 2 - 1.
-        pipe_img2img = get_pipe()
-        adv_X = pgd(X, 
-                    model=pipe_img2img.vae.encode, 
-                    clamp_min=-1, 
-                    clamp_max=1,
-                    eps=10/255, # The higher, the less imperceptible the attack is 
-                    step_size=0.02, # Set smaller than eps
-                    iters=1000, # The higher, the stronger your attack will be
-                )
-        # convert pixels back to [0,1] range
-        adv_X = (adv_X / 2 + 0.5).clamp(0, 1)
+    X = transform_to_tensor(imgs).cuda().bfloat16() * 2 - 1.
+    pipe_img2img = get_pipe()
+    adv_X = pgd(X, 
+                model=pipe_img2img.vae.encode, 
+                clamp_min=-1, 
+                clamp_max=1,
+                eps=eps, # The higher, the less imperceptible the attack is 
+                step_size=0.02, # Set smaller than eps
+                iters=iter, # The higher, the stronger your attack will be
+            )
+    # convert pixels back to [0,1] range
+    adv_X = (adv_X / 2 + 0.5).clamp(0, 1)
+    return adv_X
 def parseargs()->argparse.Namespace:
     """
-    parse arguments
+    parse argumentsww
     """
     parser = argparse.ArgumentParser(description='evaluate the quality of images')
     parser.add_argument(
@@ -104,13 +107,13 @@ def parseargs()->argparse.Namespace:
     parser.add_argument(
         '--eps',
         type=float,
-        default=0.1,
+        default=8/255,
         help='eps for pgd attack'
     )
     parser.add_argument(
         '--iter',
         type=int,
-        default=40,
+        default=100,
         help='iter for pgd attack'
     )
     args = parser.parse_args()
@@ -119,10 +122,22 @@ def parseargs()->argparse.Namespace:
 def main():
     args = parseargs()
     images = get_images_from_path(args.input_dir)
-    adv_images = perform_pgd(images,args.eps,args.iter)
-    for i in range(len(adv_images)):
-        print('saving image '+str(i))
-        adv_images[i].save(os.path.join(args.output_dir,str(i)+'.jpg'))
+    max_size_limit = 10
+    base_counter = 0
+    eps_int = int(args.eps*255)
+    output_dir = os.path.join(args.output_dir,str(eps_int))
+    if not os.path.exists(output_dir):
+        print('creating output directory')
+        os.makedirs(output_dir)
+    for k in range(0,len(images)//max_size_limit):
+        print('processing batch '+str(k))
+        adv_images=perform_pgd(images[k*max_size_limit:min((k+1)*max_size_limit,len(images))],args.eps,args.iter)
+        for i in range(len(adv_images)):
+            save_folder = output_dir
+            print('saving image at {}'.format(os.path.join(save_folder,'{}.jpg'.format(base_counter))))
+            pil_image = Image.fromarray((adv_images[i].float().detach().cpu().numpy().transpose(1,2,0)*255).astype('uint8'))
+            pil_image.save(os.path.join(save_folder,'{}.jpg'.format(base_counter)))
+            base_counter+=1
         
 if __name__ == '__main__':
     main()

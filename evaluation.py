@@ -97,9 +97,10 @@ def parseargs()->argparse.Namespace:
         choices=['BRISQUE','SSIM','PSNR','FID'],
         help='metric to evaluate the quality of images'
     )
-    assert parser.parse_args().path is not None, 'path to the images is required'
-    assert parser.parse_args().std_path is not None, 'path to the standard images is required'
     args = parser.parse_args()
+    assert args.path is not None, 'path to the images is required'
+    assert (args.std_path is not None) or (args.metric == 'BRISQUE'), 'path to the standard images is required'
+    
     return args
 
 def main():
@@ -108,7 +109,8 @@ def main():
     """
     args = parseargs()
     images = get_images_from_path(args.path)
-    std_images = get_images_from_path(args.std_path)
+    if args.std_path is not None:
+        std_images = get_images_from_path(args.std_path)
     if args.metric == 'BRISQUE':
         print(BRISQUE_LOSS(images))
     elif args.metric == 'SSIM':
