@@ -5,6 +5,8 @@ import itertools
 import logging
 import os
 import sys
+import gc
+import time
 from pathlib import Path
 from colorama import Fore, Style, init,Back
 '''some system level settings'''
@@ -877,15 +879,12 @@ def pgd_attack_with_manual_gc(
         image_list.append(perturbed_image.detach().clone().squeeze(0))
     outputs = torch.stack(image_list)
 
-    '''
-    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-    print("mem after pgd: {}".format(mem_info.used / float(1073741824)))
-    '''
 
     return outputs
     
 def main(args):
+    start_time = time.time()
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
@@ -1054,6 +1053,12 @@ def main(args):
             args.max_adv_train_steps,
             args.mode,
         )
+        
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        print("=======mem after pgd: {}=======".format(mem_info.used / float(1073741824)))
+        del f_sur
+        gc.collect()
         f = train_one_epoch(
             args,
             f,
@@ -1063,12 +1068,15 @@ def main(args):
             perturbed_data,
             args.max_f_train_steps,
         )
-        
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        print("=======mem after lora: {}======".format(mem_info.used / float(1073741824)))
+        gc.collect()
 
         if (i + 1) % args.checkpointing_iterations == 0:
             save_folder = f"{args.output_dir}/noise-ckpt/{i+1}"
             os.makedirs(save_folder, exist_ok=True)
-            noised_imgs = perturbed_data.detach()
+            noised_imgs = perturbed_data.detach().cpu()
             img_names = [
                 str(instance_path)
                 for instance_path in os.listdir(args.instance_data_dir_for_adversarial)
@@ -1076,9 +1084,17 @@ def main(args):
             for img_pixel, img_name in zip(noised_imgs, img_names):
                 save_path = os.path.join(save_folder, f"{i+1}_noise_{img_name}")
                 Image.fromarray(
-                    (img_pixel * 127.5 + 128).clamp(0, 255).to(torch.uint8).permute(1, 2, 0).cpu().numpy()
+                    (img_pixel * 127.5 + 128).clamp(0, 255).to(torch.uint8).permute(1, 2, 0).numpy()
                 ).save(save_path)
             print(f"Saved noise at step {i+1} to {save_folder}")
+            del noised_imgs
+        gc.collect()
+
+    end_time = time.time()
+
+    # Calculate and print the total time
+    execution_time = end_time - start_time
+    print(f"Execution time: {execution_time} seconds")
 
 
 if __name__ == "__main__":

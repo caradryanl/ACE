@@ -4,6 +4,8 @@ from tqdm import tqdm
 from diffusers import StableDiffusionImg2ImgPipeline
 from PIL import Image
 import os
+import gc, time, pynvml
+pynvml.nvmlInit()
 import argparse
 from torchvision.transforms import ToTensor
 def get_images_from_path(path:str)->list[Image.Image]:
@@ -60,6 +62,11 @@ def pgd(X, model, eps=0.1, step_size=0.015, iters=40, clamp_min=0, clamp_max=1, 
         X_adv = torch.minimum(torch.maximum(X_adv, X - eps), X + eps)
         X_adv.data = torch.clamp(X_adv, min=clamp_min, max=clamp_max)
         X_adv.grad = None    
+
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        print("=======mem after attack: {}======".format(mem_info.used / float(1073741824)))
+        gc.collect()
         
         if mask is not None:
             X_adv.data *= mask
@@ -120,6 +127,8 @@ def parseargs()->argparse.Namespace:
     return args
     
 def main():
+    start_time = time.time()
+    
     args = parseargs()
     images = get_images_from_path(args.input_dir)
     max_size_limit = 10
@@ -138,6 +147,12 @@ def main():
             pil_image = Image.fromarray((adv_images[i].float().detach().cpu().numpy().transpose(1,2,0)*255).astype('uint8'))
             pil_image.save(os.path.join(save_folder,'{}.jpg'.format(base_counter)))
             base_counter+=1
+
+    end_time = time.time()
+
+    # Calculate and print the total time
+    execution_time = end_time - start_time
+    print(f"Execution time: {execution_time} seconds")
         
 if __name__ == '__main__':
     main()

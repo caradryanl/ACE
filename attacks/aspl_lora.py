@@ -5,6 +5,7 @@ import itertools
 import logging
 import os
 import sys
+import gc, time
 from pathlib import Path
 sys.path.insert(0, sys.path[0]+"/../")
 
@@ -779,15 +780,12 @@ def pgd_attack(
     outputs = torch.stack(image_list)
 
 
-    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-    print("mem after pgd: {}".format(mem_info.used / float(1073741824)))
-
-
     return outputs
 
 
 def main(args):
+    start_time = time.time()
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
@@ -986,6 +984,10 @@ def main(args):
             perturbed_data,
             args.max_f_train_steps,
         )
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        print("=======mem after lora: {}======".format(mem_info.used / float(1073741824)))
+        gc.collect()
         
 
         if (i + 1) % args.checkpointing_iterations == 0:
@@ -1002,6 +1004,12 @@ def main(args):
                     (img_pixel * 127.5 + 128).clamp(0, 255).to(torch.uint8).permute(1, 2, 0).cpu().numpy()
                 ).save(save_path)
             print(f"Saved noise at step {i+1} to {save_folder}")
+
+    end_time = time.time()
+
+    # Calculate and print the total time
+    execution_time = end_time - start_time
+    print(f"Execution time: {execution_time} seconds")
 
 
 if __name__ == "__main__":
