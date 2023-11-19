@@ -131,7 +131,7 @@ def main():
     
     args = parseargs()
     images = get_images_from_path(args.input_dir)
-    max_size_limit = 10
+    max_size_limit = 1
     base_counter = 0
     eps_int = int(args.eps*255)
     output_dir = os.path.join(args.output_dir,str(eps_int))

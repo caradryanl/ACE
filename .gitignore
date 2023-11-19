@@ -10,3 +10,6 @@ datasetdict/
 *.png
 *.pyc
 attack_models/
+!data/MIST.png
+!PhotoGuard_T.png
+!trevor_5.jpg
