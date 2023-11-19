@@ -21,7 +21,7 @@ from utils import preprocess, prepare_mask_and_masked_image, recover_image, prep
 to_pil = T.ToPILImage()
 
 pipe_inpaint = StableDiffusionInpaintPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "runwayml/stable-diffusion-inpainting",
     revision="fp16",
     torch_dtype=torch.float16,
 )
@@ -90,15 +90,15 @@ def attack_forward(
         timesteps_tensor = self.scheduler.timesteps.to(self.device)
 
         for i, t in enumerate(timesteps_tensor):
-            # latent_model_input = torch.cat([latents] * 2)
-            # latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-            latent_model_input = masked_image_latents
+            latent_model_input = torch.cat([latents] * 2)
+            latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
+            # latent_model_input = masked_image_latents
             
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-            # latents = self.scheduler.step(noise_pred, t, latents, eta=eta).prev_sample
-            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+            latents = self.scheduler.step(noise_pred, t, latents, eta=eta).prev_sample
+            # latents = self.scheduler.step(noise_pred, t, latents).prev_sample
 
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
