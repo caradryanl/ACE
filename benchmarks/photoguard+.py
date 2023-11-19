@@ -106,8 +106,8 @@ def attack_forward(
     
 def compute_grad(cur_mask, cur_masked_image, prompt, target_image, **kwargs):
     torch.set_grad_enabled(True)
-    cur_mask = cur_mask.clone()
-    cur_masked_image = cur_masked_image.clone()
+    # cur_mask = cur_mask.clone()
+    # cur_masked_image = cur_masked_image.clone()
     cur_mask.requires_grad = False
     cur_masked_image.requires_grad_()
     image_nat = attack_forward(pipe_inpaint,mask=cur_mask,
@@ -116,7 +116,6 @@ def compute_grad(cur_mask, cur_masked_image, prompt, target_image, **kwargs):
                                **kwargs)
     
     loss = (image_nat - target_image).norm(p=2)
-    print(loss, cur_masked_image, cur_mask)
     grad = torch.autograd.grad(loss, [cur_masked_image], allow_unused=True)[0] * (1 - cur_mask)
         
     return grad, loss.item(), image_nat.data.cpu()
