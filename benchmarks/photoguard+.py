@@ -116,6 +116,7 @@ def compute_grad(cur_mask, cur_masked_image, prompt, target_image, **kwargs):
                                **kwargs)
     
     loss = (image_nat - target_image).norm(p=2)
+    print(loss, cur_masked_image)
     grad = torch.autograd.grad(loss, [cur_masked_image], allow_unused=True)[0] * (1 - cur_mask)
         
     return grad, loss.item(), image_nat.data.cpu()
@@ -190,7 +191,6 @@ guidance_scale = 7.5
 num_inference_steps = 4
 
 cur_mask, cur_masked_image = prepare_mask_and_masked_image(init_image, mask_image)
-print(cur_mask, cur_masked_image)
 cur_mask = cur_mask.half().cuda()
 cur_masked_image = cur_masked_image.half().cuda()
 target_image_tensor = prepare_image(target_image)
