@@ -21,7 +21,7 @@ from utils import preprocess, prepare_mask_and_masked_image, recover_image, prep
 to_pil = T.ToPILImage()
 
 pipe_inpaint = StableDiffusionInpaintPipeline.from_pretrained(
-    "stable-diffusion/stable-diffusion-1-5",
+    "runwayml/stable-diffusion-v1-5",
     revision="fp16",
     torch_dtype=torch.float16,
 )
