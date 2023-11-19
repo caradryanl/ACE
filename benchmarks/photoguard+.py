@@ -190,7 +190,7 @@ guidance_scale = 7.5
 num_inference_steps = 4
 
 cur_mask, cur_masked_image = prepare_mask_and_masked_image(init_image, mask_image)
-
+print(cur_mask, cur_masked_image)
 cur_mask = cur_mask.half().cuda()
 cur_masked_image = cur_masked_image.half().cuda()
 target_image_tensor = prepare_image(target_image)
