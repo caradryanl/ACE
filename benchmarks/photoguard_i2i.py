@@ -24,87 +24,97 @@ to_pil = T.ToPILImage()
 def attack_forward(
         self,
         prompt: Union[str, List[str]],
-        masked_image: Union[torch.FloatTensor, Image.Image],
-        mask: Union[torch.FloatTensor, Image.Image],
+        image: Union[torch.FloatTensor, Image.Image],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         eta: float = 0.0,
+        strength = .4,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 10,
     ):
-        
-        text_inputs = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
+ # 1. Check inputs. Raise error if not correct
+    self.check_inputs(prompt, strength, callback_steps, negative_prompt, None, None)
+    num_images_per_prompt = 1
+    # 2. Define call parameters
+    if prompt is not None and isinstance(prompt, str):
+        batch_size = 1
+    elif prompt is not None and isinstance(prompt, list):
+        batch_size = len(prompt)
+    else:
+        raise ValueError("Prompt must be either a string or a list of strings.")
+    device = self._execution_device
+    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # corresponds to doing no classifier free guidance.
+    do_classifier_free_guidance = guidance_scale > 1.0
 
-        uncond_tokens = [" "]
-        max_length = text_input_ids.shape[-1]
-        uncond_input = self.tokenizer(
-            uncond_tokens,
-            padding="max_length",
-            max_length=max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
-        seq_len = uncond_embeddings.shape[1]
-        text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-        
-        text_embeddings = text_embeddings.detach()
+    # 3. Encode input prompt
+    prompt_embeds = self._encode_prompt(
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt,
+        prompt_embeds=None,
+    )
 
-        num_channels_latents = self.vae.config.latent_channels
-        
-        latents_shape = (1 , num_channels_latents, height // 8, width // 8)
-        latents = torch.randn(latents_shape, device=self.device, dtype=text_embeddings.dtype)
-        mask = torch.nn.functional.interpolate(mask, size=(height // 8, width // 8))
-        mask = torch.cat([mask] * 2)
 
-        masked_image_latents = self.vae.encode(masked_image).latent_dist.sample()
-        masked_image_latents = 0.18215 * masked_image_latents
-        masked_image_latents = torch.cat([masked_image_latents] * 2)
+    # 5. set timesteps
+    self.scheduler.set_timesteps(num_inference_steps, device=device)
+    timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+    latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-        latents = latents * self.scheduler.init_noise_sigma
-        
-        self.scheduler.set_timesteps(num_inference_steps)
-        timesteps_tensor = self.scheduler.timesteps.to(self.device)
+    # 6. Prepare latent variables
+    latents = self.prepare_latents(
+        image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, None
+    )
 
-        for i, t in enumerate(timesteps_tensor):
-            latent_model_input = torch.cat([latents] * 2)
-            latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-            # latent_model_input = masked_image_latents
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+    # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+    extra_step_kwargs = self.prepare_extra_step_kwargs(None, eta)
+
+    # 8. Denoising loop
+    num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+    for i, t in enumerate(timesteps):
+        # expand the latents if we are doing classifier free guidance
+        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+        latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+        # predict the noise residual
+        noise_pred = self.unet(
+            latent_model_input,
+            t,
+            encoder_hidden_states=prompt_embeds,
+            cross_attention_kwargs=None,
+        ).sample
+
+        # perform guidance
+        if do_classifier_free_guidance:
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-            latents = self.scheduler.step(noise_pred, t, latents, eta=eta).prev_sample
-            # latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+        # compute the previous noisy sample x_t -> x_t-1
+        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
-        latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents).sample
+        image = self.decode_latents(latents)
         return image
 
     
-def compute_grad(cur_mask, cur_masked_image, prompt, target_image,pipe_inpaint, **kwargs):
+def compute_grad(cur_masked_image, prompt, target_image,pipe_inpaint, **kwargs):
     torch.set_grad_enabled(True)
-    cur_mask = cur_mask.clone()
     cur_masked_image = cur_masked_image.clone()
-    cur_mask.requires_grad = False
     cur_masked_image.requires_grad_()
-    image_nat = attack_forward(pipe_inpaint,mask=cur_mask,
-                                masked_image=cur_masked_image,
+    image_nat = attack_forward(pipe_inpaint,
+                                image=cur_masked_image,
                                 prompt=prompt,
                                 **kwargs)
     
     loss = (image_nat - target_image).norm(p=2)
-    grad = torch.autograd.grad(loss, cur_masked_image, allow_unused=True)[0] * (1 - cur_mask)
+    grad = torch.autograd.grad(loss, cur_masked_image, allow_unused=True)[0]
         
     return grad, loss.item(), image_nat.data.cpu()
 
-def super_l2(cur_mask, X, prompt, step_size, iters, eps, clamp_min, clamp_max,pipe_inpaint, grad_reps = 5, target_image = 0, **kwargs):
+def super_l2( X, prompt, step_size, iters, eps, clamp_min, clamp_max,pipe_inpaint, grad_reps = 5, target_image = 0, **kwargs):
     X_adv = X.clone()
     iterator = tqdm(range(iters))
     for i in iterator:
@@ -112,7 +122,7 @@ def super_l2(cur_mask, X, prompt, step_size, iters, eps, clamp_min, clamp_max,pi
         all_grads = []
         losses = []
         for i in range(grad_reps):
-            c_grad, loss, last_image = compute_grad(cur_mask, X_adv, prompt, target_image,pipe_inpaint, **kwargs)
+            c_grad, loss, last_image = compute_grad(X_adv, prompt, target_image,pipe_inpaint, **kwargs)
             all_grads.append(c_grad)
             losses.append(loss)
         grad = torch.stack(all_grads).mean(0)
@@ -139,7 +149,7 @@ def super_l2(cur_mask, X, prompt, step_size, iters, eps, clamp_min, clamp_max,pi
 
     return X_adv, last_image
 
-def super_linf(cur_mask, X, prompt, step_size, iters, eps, clamp_min, clamp_max,pipe_inpaint, grad_reps = 5, target_image = 0, **kwargs):
+def super_linf(X, prompt, step_size, iters, eps, clamp_min, clamp_max,pipe_inpaint, grad_reps = 5, target_image = 0, **kwargs):
     X_adv = X.clone()
     iterator = tqdm(range(iters))
     for i in iterator:
@@ -147,7 +157,7 @@ def super_linf(cur_mask, X, prompt, step_size, iters, eps, clamp_min, clamp_max,
         all_grads = []
         losses = []
         for i in range(grad_reps):
-            c_grad, loss, last_image = compute_grad(cur_mask, X_adv, prompt, target_image,pipe_inpaint, **kwargs)
+            c_grad, loss, last_image = compute_grad(X_adv, prompt, target_image,pipe_inpaint, **kwargs)
             all_grads.append(c_grad)
             losses.append(loss)
         grad = torch.stack(all_grads).mean(0)
@@ -175,11 +185,11 @@ def parse_args():
         os.makedirs(args.save_path)
     return args
 def main(**args):
-    pipe_inpaint = StableDiffusionInpaintPipeline.from_pretrained(
-        "./stable-diffusion/impaint",
+    pipe_inpaint = StableDiffusionImg2ImgPipeline.from_pretrained(
+        "./stable-diffusion/stable-diffusion-1-5",
         revision="fp16",
         safety_checker = None,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
     )
     dataset_path = args["data_path"]
     save_path = args["save_path"]
@@ -194,23 +204,23 @@ def main(**args):
         prompt = ""
         SEED = 786349
         torch.manual_seed(SEED)
-        strength = 0.7
+        strength = 0.4
         guidance_scale = 7.5
-        num_inference_steps = 4
+        num_inference_steps = 10
         #cur_mask, cur_masked_image = prepare_mask_and_masked_image(init_image, mask_image)
         #cur_mask = cur_mask.half().cuda()
         #cur_masked_image = cur_masked_image.half().cuda()
-        cur_mask = torch.zeros((1,1,512,512)).cuda().bfloat16()
-        cur_masked_image = init_image.bfloat16().cuda().unsqueeze(0)
-        result, last_image= super_linf(cur_mask, cur_masked_image,
+        cur_masked_image = init_image.half().cuda().unsqueeze(0)
+        result, last_image= super_linf( cur_masked_image,
                         prompt=prompt,
                         target_image=target_image_tensor,
                         eps=8./255,
                         step_size=1.,
-                        iters=200,
+                        iters=50,
                         clamp_min = -1,
                         clamp_max = 1,
                         eta=1,
+                        strength = strength,
                         pipe_inpaint=pipe_inpaint,
                         num_inference_steps=num_inference_steps,
                         guidance_scale=guidance_scale,
@@ -218,7 +228,7 @@ def main(**args):
                         )
         result = (result + 1) / 2.
         result = result.clamp(0, 1)
-        result = result[0].detach().cpu().float()
+        result = result[0].detach().cpu()
         pil_result = to_pil(result)
         pil_result.save(os.path.join(save_path, image_name))
 if __name__ == "__main__":

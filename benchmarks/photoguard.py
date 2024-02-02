@@ -29,10 +29,6 @@ def transform_to_tensor(images:list[Image.Image])->torch.Tensor:
 def get_pipe()->StableDiffusionImg2ImgPipeline:
     model_id_or_path = "stable-diffusion/stable-diffusion-1-5"
     # model_id_or_path = "CompVis/stable-diffusion-v1-4"
-    # model_id_or_path = "CompVis/stable-diffusion-v1-3"
-    # model_id_or_path = "CompVis/stable-diffusion-v1-2"
-    # model_id_or_path = "CompVis/stable-diffusion-v1-1"
-
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pretrained(
         model_id_or_path,
         revision="bf16", 

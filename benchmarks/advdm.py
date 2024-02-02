@@ -593,31 +593,6 @@ def pgd_attack(
             loss = F.mse_loss(noise, model_pred, reduction="mean")
             #print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
             # target-shift loss
-            '''
-            if target_tensor is not None:
-                # print(model_pred.device, timesteps.device, noisy_latents.device)
-                """
-                bug, not usable
-                xtm1_pred = torch.cat(
-                    [
-                        noise_scheduler.step(
-                            model_pred[idx : idx + 1],
-                            timesteps[idx : idx + 1],
-                            noisy_latents[idx : idx + 1],
-                        ).prev_sample
-                        for idx in range(len(model_pred))
-                    ]
-                )
-                """"""
-                xtm1_pred = model_pred
-                xtm1_target = noise_scheduler.add_noise(target_tensor, noise, timesteps - 1)
-                loss = - F.mse_loss(xtm1_pred, xtm1_target)
-
-                # fused mode
-                if mode == 'fused_target':
-                    latent_attack = LatentAttack()
-                    loss = loss + args.fused_weight * latent_attack(latents, target_tensor=target_tensor)
-            '''
             loss = loss / args.gradient_accumulation_steps
             loss.backward()
             alpha = args.pgd_alpha
@@ -631,13 +606,6 @@ def pgd_attack(
 
         image_list.append(perturbed_image.detach().clone().squeeze(0))
     outputs = torch.stack(image_list)
-
-    '''
-    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-    print("mem after pgd: {}".format(mem_info.used / float(1073741824)))
-    '''
-
     return outputs
 def main(args):
     start_time = time.time()

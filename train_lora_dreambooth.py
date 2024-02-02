@@ -169,8 +169,9 @@ def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
+        "-p",
         type=str,
-        default="/root/autodl-tmp/ImprovedAdvDM/stable-diffusion/stable-diffusion-1-5",
+        default="./stable-diffusion/stable-diffusion-1-5",
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
@@ -474,7 +475,9 @@ def parse_args(input_args=None):
             raise ValueError(
                 "Safetensors is not available - either install it, or change output_format."
             )
-
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir, exist_ok=True)
+        print(f"Created output directory {args.output_dir}")
     return args
 
 
@@ -904,6 +907,7 @@ def main(args):
                         )
                         pipeline = StableDiffusionPipeline.from_pretrained(
                             args.pretrained_model_name_or_path,
+                            safety_checker=None,
                             unet=accelerator.unwrap_model(unet, **extra_args),
                             text_encoder=accelerator.unwrap_model(
                                 text_encoder, **extra_args
@@ -965,6 +969,7 @@ def main(args):
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             unet=accelerator.unwrap_model(unet),
+            safety_checker=None,
             text_encoder=accelerator.unwrap_model(text_encoder),
             revision=args.revision,
         )

@@ -5,8 +5,6 @@ import itertools
 import logging
 import os
 import sys
-import gc
-import time
 from pathlib import Path
 from colorama import Fore, Style, init,Back
 '''some system level settings'''
@@ -31,6 +29,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 from torch import autograd
+from typing import Optional, Tuple
 import pynvml
 pynvml.nvmlInit()
 
@@ -140,6 +139,7 @@ def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
+        "-p",
         type=str,
         default="./stable-diffusion/stable-diffusion-1-5",
         required=False,
@@ -258,7 +258,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--max_f_train_steps",
         type=int,
-        default=3,
+        default=5,
         help="Total number of sub-steps to train surogate model.",
     )
     parser.add_argument(
@@ -476,7 +476,9 @@ def parse_args(input_args=None):
         args = parser.parse_args(input_args)
     else:
         args = parser.parse_args()
-
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir,exist_ok=True)
+        print(Back.BLUE+Fore.GREEN+'create output dir: {}'.format(args.output_dir))
     return args
 
 
@@ -656,7 +658,17 @@ def train_one_epoch(
     
     return [unet, text_encoder]
 
-
+def get_alphas(original_samples,alphas_cumprod,timesteps)->Tuple[torch.Tensor, torch.Tensor]:
+    alphas_cumprod = alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+    timesteps = timesteps.to(original_samples.device)
+    sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
+    sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+    while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
+        sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
+    sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
+    while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
+        sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
+    return sqrt_alpha_prod, sqrt_one_minus_alpha_prod
 def pgd_attack(
     args,
     models,
@@ -684,16 +696,21 @@ def pgd_attack(
     text_encoder.requires_grad_(False)
     unet.requires_grad_(False)
     target_images = target_images.to(device, dtype=weight_dtype).detach().clone()
+    print(f"target tensor shape: {target_tensor.shape}")
     data_tensor = data_tensor.detach().clone()
     num_image = len(data_tensor)
     image_list = []
-    tbar = tqdm(range(num_image))
-    tbar.set_description("PGD attack")
-    for id in range(num_image):
-        tbar.update(1)
-        perturbed_image = data_tensor[id, :].unsqueeze(0)
+    batch_size = args.train_batch_size
+    tbar = tqdm(range(num_image//batch_size))
+    noise_scheduler.alphas_cumprod = noise_scheduler.alphas_cumprod.to(device=target_tensor.device, dtype=target_tensor.dtype)
+    noise_scheduler.betas  = noise_scheduler.betas.to(device=target_tensor.device, dtype=target_tensor.dtype)
+    noise_scheduler.alphas = noise_scheduler.alphas.to(device=target_tensor.device, dtype=target_tensor.dtype)
+    for k in range(num_image//batch_size):
+        id = k * batch_size
+        end_id = min((k+1) * batch_size, num_image)
+        perturbed_image = data_tensor[id:end_id, :].detach().clone()
         perturbed_image.requires_grad = True
-        original_image = original_images[id, :].unsqueeze(0)
+        original_image = original_images[id:end_id, :]
         input_ids = tokenizer(
             args.instance_prompt,
             truncation=True,
@@ -702,25 +719,29 @@ def pgd_attack(
             return_tensors="pt",
         ).input_ids
         input_ids = input_ids.to(device)
+        tbar.set_description("PGD attack on image {} to {}".format(id, end_id))
+        tbar.update(1)
+        original_latent = None
         for step in range(num_steps):
             perturbed_image.requires_grad = True
             latents = vae.encode(perturbed_image.to(device, dtype=weight_dtype)).latent_dist.sample()
             latents = latents * vae.config.scaling_factor
-
+            if original_latent is None:
+                original_latent = latents.detach().clone()
             # Sample noise that we'll add to the latents
             noise = torch.randn_like(latents)
             bsz = latents.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
             timesteps = timesteps.long()
-            
+            noise_scheduler.num_inference_steps = noise_scheduler.config.num_train_timesteps
             # Add noise to the latents according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
             # Get the text embedding for conditioning
-            encoder_hidden_states = text_encoder(input_ids)[0]
-
+            encoder_hidden_states = text_encoder(input_ids)[0].repeat(bsz, 1, 1)
+            #print(f"encoder_hidden_states shape: {encoder_hidden_states.shape}",f"noisy_latents shape: {noisy_latents.shape}",f"timesteps shape: {timesteps.shape}")
             # Predict the noise residual
             model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
@@ -734,16 +755,24 @@ def pgd_attack(
 
             unet.zero_grad()
             text_encoder.zero_grad()
-            loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
+            loss = None
             # target-shift loss
             if target_tensor is not None:
-                loss = - F.mse_loss(model_pred, target_tensor)
-                # fused mode
-                if mode == 'fused':
-                    latent_attack = LatentAttack()
-                    loss = loss - 1e2 * latent_attack(latents, target_tensor=target_tensor)
+                xtm1_pred = torch.cat(
+                    [
+                        noise_scheduler.step(
+                            model_pred[idx : idx + 1],
+                            timesteps[idx : idx + 1],
+                            noisy_latents[idx : idx + 1],
+                        ).prev_sample
+                        for idx in range(model_pred.shape[0])
+                    ]
+                )
+                xtm1_target = noise_scheduler.add_noise(target_tensor, noise, timesteps - 1)
+                loss = - F.mse_loss(xtm1_pred, xtm1_target.detach().clone())
+                tbar.set_postfix_str("loss: {}".format(loss.detach().item()))
             loss = loss / args.gradient_accumulation_steps
+            tbar.set_postfix(loss=loss.detach().item())
             loss.backward()
             alpha = args.pgd_alpha
             eps = args.pgd_eps
@@ -754,7 +783,7 @@ def pgd_attack(
                 perturbed_image.requires_grad = True
             #print(f"PGD loss - step {step}, loss: {loss.detach().item()}")
 
-        image_list.append(perturbed_image.detach().clone().squeeze(0))
+        image_list.extend([image.detach().clone() for image in perturbed_image])
     outputs = torch.stack(image_list)
 
     '''
@@ -833,7 +862,7 @@ def pgd_attack_with_manual_gc(
             # Add noise to the latents according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
+            noise_target_latents = noise_scheduler.add_noise(latents, noise, timesteps).detach().clone()
             # Get the text embedding for conditioning
             encoder_hidden_states = text_encoder(input_ids)[0]
 
@@ -852,13 +881,21 @@ def pgd_attack_with_manual_gc(
             text_encoder.zero_grad()
             loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
-            # target-shift loss
+             # target-shift loss
             if target_tensor is not None:
-                loss = - F.mse_loss(model_pred, target_tensor)
-                # fused mode
-                if mode == 'fused':
-                    latent_attack = LatentAttack()
-                    loss = loss - 1e2 * latent_attack(latents, target_tensor=target_tensor)
+                xtm1_pred = torch.cat(
+                    [
+                        noise_scheduler.step(
+                            model_pred[idx : idx + 1],
+                            timesteps[idx : idx + 1],
+                            noisy_latents[idx : idx + 1],
+                        ).prev_sample
+                        for idx in range(len(model_pred))
+                    ]
+                )
+                xtm1_target = noise_scheduler.add_noise(target_tensor, noise, timesteps - 1)
+                loss = - F.mse_loss(xtm1_pred, xtm1_target)
+            loss.backward()
             loss = loss / args.gradient_accumulation_steps
             grads = autograd.grad(loss, latents)[0].detach().clone()
             # now loss is backproped to latents
@@ -879,12 +916,15 @@ def pgd_attack_with_manual_gc(
         image_list.append(perturbed_image.detach().clone().squeeze(0))
     outputs = torch.stack(image_list)
 
+    '''
+    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    print("mem after pgd: {}".format(mem_info.used / float(1073741824)))
+    '''
 
     return outputs
     
 def main(args):
-    start_time = time.time()
-
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
@@ -1001,7 +1041,7 @@ def main(args):
     #print info about use_8bit_adam
     print(Back.BLUE+Fore.GREEN+'use_8bit_adam: {}'.format(args.use_8bit_adam))
     # added by lora
-    text_encoder.requires_grad_(False)
+    #text_encoder.requires_grad_(False)
     # end: added by lora
 
     if args.allow_tf32:
@@ -1053,12 +1093,6 @@ def main(args):
             args.max_adv_train_steps,
             args.mode,
         )
-        
-        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        print("=======mem after pgd: {}=======".format(mem_info.used / float(1073741824)))
-        del f_sur
-        gc.collect()
         f = train_one_epoch(
             args,
             f,
@@ -1068,15 +1102,12 @@ def main(args):
             perturbed_data,
             args.max_f_train_steps,
         )
-        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        print("=======mem after lora: {}======".format(mem_info.used / float(1073741824)))
-        gc.collect()
+        
 
         if (i + 1) % args.checkpointing_iterations == 0:
             save_folder = f"{args.output_dir}/noise-ckpt/{i+1}"
             os.makedirs(save_folder, exist_ok=True)
-            noised_imgs = perturbed_data.detach().cpu()
+            noised_imgs = perturbed_data.detach()
             img_names = [
                 str(instance_path)
                 for instance_path in os.listdir(args.instance_data_dir_for_adversarial)
@@ -1084,17 +1115,9 @@ def main(args):
             for img_pixel, img_name in zip(noised_imgs, img_names):
                 save_path = os.path.join(save_folder, f"{i+1}_noise_{img_name}")
                 Image.fromarray(
-                    (img_pixel * 127.5 + 128).clamp(0, 255).to(torch.uint8).permute(1, 2, 0).numpy()
+                    (img_pixel * 127.5 + 128).clamp(0, 255).to(torch.uint8).permute(1, 2, 0).cpu().numpy()
                 ).save(save_path)
             print(f"Saved noise at step {i+1} to {save_folder}")
-            del noised_imgs
-        gc.collect()
-
-    end_time = time.time()
-
-    # Calculate and print the total time
-    execution_time = end_time - start_time
-    print(f"Execution time: {execution_time} seconds")
 
 
 if __name__ == "__main__":

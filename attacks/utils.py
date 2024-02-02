@@ -128,3 +128,20 @@ class LatentAttack(attack_mixin):
             raise ValueError("Need a target tensor for pre-attack")
         loss = F.mse_loss(latents, target_tensor, reduction="mean")
         return loss
+
+
+def print_tensor(tensor_object:torch.Tensor)->None:
+    # print the tensor in an image manner
+    # assert tensor should be an 2-d tensor
+    # tensor should contain only 0 or 1
+    assert len(tensor_object.shape) == 2, "tensor should be 2-d"
+    
+    for i in range(tensor_object.shape[0]):
+        for j in range(tensor_object.shape[1]):
+            if tensor_object[i,j] == 0:
+                print('#',end='')
+            else:
+                print('*',end='')
+        print('')
+    print('')
+    
