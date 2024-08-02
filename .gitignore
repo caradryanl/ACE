@@ -7,7 +7,6 @@ datasets/
 datasetdict/
 *.safetensors
 *.jpg
-*.png
 *.pyc
 attack_models/
 !data/MIST.png
@@ -15,3 +14,4 @@ attack_models/
 !trevor_5.jpg
 !data/NIPS.png
 stable-diffusion/
+data/class/*
