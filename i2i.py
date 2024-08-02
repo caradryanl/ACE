@@ -95,8 +95,10 @@ def parseargs() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--pretrained_model_name_or_path",
+        "-p",
         type=str,
-        required=True,
+        default="./stable-diffusion/stable-diffusion-v1-5",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument("--prompt", '-p', type=str,
                         default="")
