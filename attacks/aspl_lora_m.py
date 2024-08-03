@@ -137,7 +137,6 @@ def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
-        "-p",
         type=str,
         default="./stable-diffusion/stable-diffusion-v1-5",
         required=False,
@@ -346,7 +345,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--target_image_path",
-        default="data/MIST.png",
+        default="data/NIPS.png",
         help="target image for attacking",
     )
 
