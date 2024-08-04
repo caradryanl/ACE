@@ -8,6 +8,8 @@ datasetdict/
 *.safetensors
 *.jpg
 *.pyc
+*.png
+*.zip
 attack_models/
 !data/MIST.png
 !PhotoGuard_T.png
