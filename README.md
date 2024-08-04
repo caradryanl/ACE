@@ -71,7 +71,7 @@ We also provide a script to do txt2img(on lora model), img2img(on original model
 python i2i.py -m [mode]=[t2i|i2i] -lp [lora_model_path] -ip [input_img_folder] -op [output_img_folder] -spi $N -s [strength] -p [prompt]
 ```
 
-For txt2img inference, `-spi` is the number of samples per prompt. For img2img inference, `-spi` is the number of samples per image. Default value is 1. For txt2img, `[strength]` is the steps of denoising (more precisely, int(50 * strength) is the inference step). For img2img, `[strength]` is the strength of the denoising. The default value is 0.4.
+For txt2img inference, `-spi` is the number of samples per prompt. For img2img inference, `-spi` is the number of samples per image. Default value is 1. For txt2img, `[strength]` is the steps of denoising (more precisely, int(50 * strength) is the inference step). For img2img, `[strength]` is the strength of the denoising. The default value is 0.3, as the setup in the paper.
 
 simply omit the unnecessary command-line parameters. For example, to do generate 10 image on lora model, simply run:
 
