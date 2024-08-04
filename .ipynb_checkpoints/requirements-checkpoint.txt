@@ -19,6 +19,4 @@ cache
 xformers
 colorama
 torchmetrics
-pytorch-ignite
-pytorch-msssim
 --extra-index-url https://download.pytorch.org/whl/cu118
