@@ -17,11 +17,11 @@
 # python i2i.py -m t2i -lp lora_repo/ace-outputs/1499/lora_weight.safetensors -op outputs/ace/1499 -spi 100 -p "a photo of a sks person"
 # python i2i.py -m t2i -lp lora_repo/ace-outputs/1657/lora_weight.safetensors -op outputs/ace/1657 -spi 100 -p "a photo of a sks person"
 
-# python i2i.py -m i2i -ip lora_repo/training/121/noise-ckpt/5 -op outputs/ace_i2i/121 -spi 1 -p "a photo of a sks person"
-# python i2i.py -m i2i -ip lora_repo/training/1135/noise-ckpt/5 -op outputs/ace_i2i/1135 -spi 1 -p "a photo of a sks person"
-# python i2i.py -m i2i -ip lora_repo/training/1422/noise-ckpt/5 -op outputs/ace_i2i/1422 -spi 1 -p "a photo of a sks person"
-# python i2i.py -m i2i -ip lora_repo/training/1499/noise-ckpt/5 -op outputs/ace_i2i/1499 -spi 1 -p "a photo of a sks person"
-# python i2i.py -m i2i -ip lora_repo/training/1657/noise-ckpt/5 -op outputs/ace_i2i/1657 -spi 1 -p "a photo of a sks person"
+python i2i.py -m i2i -ip lora_repo/training/121/noise-ckpt/5 -op outputs/ace_i2i/121 -spi 1 -p "a photo of a sks person"
+python i2i.py -m i2i -ip lora_repo/training/1135/noise-ckpt/5 -op outputs/ace_i2i/1135 -spi 1 -p "a photo of a sks person"
+python i2i.py -m i2i -ip lora_repo/training/1422/noise-ckpt/5 -op outputs/ace_i2i/1422 -spi 1 -p "a photo of a sks person"
+python i2i.py -m i2i -ip lora_repo/training/1499/noise-ckpt/5 -op outputs/ace_i2i/1499 -spi 1 -p "a photo of a sks person"
+python i2i.py -m i2i -ip lora_repo/training/1657/noise-ckpt/5 -op outputs/ace_i2i/1657 -spi 1 -p "a photo of a sks person"
 
 # python evaluation.py -m CLIPT2I --path outputs/ace/121 --std_path data/celeba/121 -c person
 # python evaluation.py -m CLIPT2I --path outputs/ace/1135 --std_path data/celeba/1135 -c person
