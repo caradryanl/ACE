@@ -101,7 +101,7 @@ def parseargs() -> argparse.Namespace:
     )
     parser.add_argument("--prompt", '-p', type=str,
                         default="")
-    parser.add_argument("--strength", '-s', type=float, default=.4)
+    parser.add_argument("--strength", '-s', type=float, default=.3)
     parser.add_argument("--sample_per_img", '-spi', type=int, default=1)
     parser.add_argument("--lora_path", '-lp', type=str,
                         default=None)
