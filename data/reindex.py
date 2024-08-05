@@ -1,4 +1,6 @@
 import os
+from PIL import Image
+
 
 # Set the path to the directory containing the images
 directory_root = 'data/celeba/'
@@ -29,8 +31,11 @@ for directory_name in os.listdir(directory_root):
         # Get the full paths for the old and new file names
         old_file_path = os.path.join(directory_path, file_name)
         new_file_path = os.path.join(directory_path, new_name)
-        
-        # Rename the file
-        os.rename(old_file_path, new_file_path)
+
+        with Image.open(old_file_path) as img:
+            # Save the image as a PNG
+            img.save(new_file_path, "PNG")
+        # Delete the original JPEG file
+        os.remove(old_file_path)
     
     print("Files have been renamed successfully.")
