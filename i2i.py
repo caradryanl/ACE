@@ -24,7 +24,7 @@ def get_images_from_path(path:str,resolution=512) ->list[Image.Image]:
         for file in files:
             #print(file)
             if file.endswith('.jpg') or file.endswith('.png'):
-                images.append(Image.open(os.path.join(root, file)).convert('RGB').resize((resolution,resolution),Image.BILINEAR))
+                images.append(Image.open(os.path.join(root, file)).convert('RGB').resize((resolution,resolution),Image.Resampling.BILINEAR))
 
         return images
 
@@ -174,7 +174,7 @@ def I2IPipeline(args: argparse.Namespace):
                         args.prompt, args.strength))
     for i, img in enumerate(imgs):
         #print(f"Saving image {i} in {args.output_path}")
-        img.save(f"{args.output_path}/{i}.jpg")
+        img.save(f"{args.output_path}/{i}.png")
 def T2IPipeline(args: argparse.Namespace):
     pipe = get_lora_model(args.lora_path,args.pretrained_model_name_or_path)
     base_counter = 0
@@ -194,7 +194,7 @@ def T2IPipeline(args: argparse.Namespace):
         for i, img in enumerate(imgs):    
             if args.verbose:
                 print(f"Saving image {base_counter} in {args.output_path}")
-            img.save(f"{args.output_path}/{base_counter}.jpg")
+            img.save(f"{args.output_path}/{base_counter}.png")
             base_counter += 1
         sample_size -= max_sample_size
 def ImpaintPipeline(args: argparse.Namespace):
@@ -236,7 +236,7 @@ def ImpaintPipeline(args: argparse.Namespace):
         for i, img in enumerate(output_imgs):
             if args.verbose:
                 print(f"Saving image {base_counter} in {args.output_path}")
-            img.save(f"{args.output_path}/{base_counter}.jpg")
+            img.save(f"{args.output_path}/{base_counter}.png")
             base_counter += 1
 if __name__ == "__main__":
     args = parseargs()

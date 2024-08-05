@@ -30,7 +30,7 @@ def get_images_from_path(path:str,maximum_img_num:int) ->list[Image.Image]:
         for file in files:
             #print(file)
             if file.endswith('.jpg') or file.endswith('.png'):
-                images.append(Image.open(os.path.join(root, file)).convert('RGB').resize((512,512),Image.BILINEAR))
+                images.append(Image.open(os.path.join(root, file)).convert('RGB').resize((512,512),Image.Resampling.BILINEAR))
                 if len(images) == maximum_img_num:
                     break
         return images

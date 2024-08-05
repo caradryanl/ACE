@@ -1096,10 +1096,11 @@ def main(args):
                 for instance_path in os.listdir(args.instance_data_dir_for_adversarial)
             ]
             for img_pixel, img_name in zip(noised_imgs, img_names):
+                img_name = os.path.splitext(img_name)[0] + ".png"
                 save_path = os.path.join(save_folder, f"{i+1}_noise_{img_name}")
                 Image.fromarray(
                     (img_pixel * 127.5 + 128).clamp(0, 255).to(torch.uint8).permute(1, 2, 0).cpu().numpy()
-                ).save(save_path)
+                ).save(save_path, "PNG")
             print(f"Saved noise at step {i+1} to {save_folder}")
 
 
