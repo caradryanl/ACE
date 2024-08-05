@@ -2,13 +2,12 @@
 *.ckpt
 *.pt
 logs/
+lora_repo/
 outputs/
-datasets/
 datasetdict/
 *.safetensors
 *.jpg
 *.pyc
-*.png
 *.zip
 attack_models/
 !data/MIST.png
