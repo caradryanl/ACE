@@ -1056,40 +1056,6 @@ def main(args):
     #data_mask = torch.ones_like(perturbed_data)
     #data_mask[:, :,100:300, 100:300] = 1.
     #print_tensor(data_mask[0][0])
-    if args.max_train_steps <= 0:
-        pgd_attack_func = pgd_attack_with_manual_gc if args.low_vram_mode else pgd_attack
-        perturbed_data = pgd_attack_func(
-            args,
-            f_sur,
-            tokenizer,
-            noise_scheduler,
-            vae,
-            perturbed_data,
-            original_data,
-            target_latent_tensor,
-            target_image_tensor,
-            args.max_adv_train_steps,
-            args.mode,
-            #mask,
-            #data_mask
-        )
-        save_folder = f"{args.output_dir}"
-        os.makedirs(save_folder, exist_ok=True)
-        noised_imgs = perturbed_data.detach()
-        img_names = [
-            str(instance_path)
-            for instance_path in os.listdir(args.instance_data_dir_for_adversarial)
-        ]
-        for img_pixel, img_name in zip(noised_imgs, img_names):
-            img_name = os.path.splitext(img_name)[0] + ".png"
-            save_path = os.path.join(save_folder, f"noise_{img_name}")
-            Image.fromarray(
-                (img_pixel * 127.5 + 128).clamp(0, 255).to(torch.uint8).permute(1, 2, 0).cpu().numpy()
-            ).save(save_path, "PNG")
-        print(f"Saved noise to {save_folder}")
-        
-
-    
     for i in range(args.max_train_steps):
         # 1. f' = f.clone()
         
